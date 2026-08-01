@@ -1,0 +1,287 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import Header from "@/components/Header";
+import VideoIntake from "@/components/VideoIntake";
+import VideoPlayer from "@/components/VideoPlayer";
+import Transcript from "@/components/Transcript";
+
+export type TranscriptLine = {
+  start: number;
+  duration: number;
+  text: string; // Original text (Kanji)
+  romaji: string;
+  translation: string;
+  isTranslated?: boolean;
+  tokens: { text: string; reading?: string; pos: string; meaning?: string }[];
+};
+
+export default function LearnPage() {
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [transcriptData, setTranscriptData] = useState<TranscriptLine[] | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [showFurigana, setShowFurigana] = useState(true);
+  const [seekTo, setSeekTo] = useState<number | null>(null);
+  const [showSearchBox, setShowSearchBox] = useState(true);
+
+  // Use a ref to access latest transcriptData inside the observer callback without causing re-renders
+  const transcriptDataRef = useRef<TranscriptLine[] | null>(null);
+  useEffect(() => {
+    transcriptDataRef.current = transcriptData;
+  }, [transcriptData]);
+
+  // Font settings
+  const [fontSizeMultiplier, setFontSizeMultiplier] = useState(1);
+
+  useEffect(() => {
+    const savedSize = localStorage.getItem('app_font_size');
+    if (savedSize) setFontSizeMultiplier(parseFloat(savedSize));
+  }, []);
+
+  // Track which chunks we are currently translating to avoid duplicate requests
+  const translatingChunksRef = useRef<Set<number>>(new Set());
+
+  const handleUrlSubmit = async (url: string) => {
+    let vidId = "";
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.hostname.includes("youtube.com")) {
+        vidId = urlObj.searchParams.get("v") || "";
+      } else if (urlObj.hostname.includes("youtu.be")) {
+        vidId = urlObj.pathname.slice(1);
+      }
+    } catch {
+      setError("Link sai định dạng");
+      return;
+    }
+
+    if (!vidId) {
+      setError("Không tìm thấy video ID");
+      return;
+    }
+
+    setVideoId(vidId);
+    setIsLoading(true);
+    setError(null);
+    setTranscriptData(null);
+    setShowSearchBox(false);
+    translatingChunksRef.current.clear(); // Reset translation state for new video
+
+    try {
+      const apiKey = localStorage.getItem('gemini_api_key') || "";
+      const res = await fetch("/api/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId: vidId, apiKey }),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Không lấy được phụ đề cho video này.");
+      }
+
+      const data = await res.json();
+      if (!data.transcript || data.transcript.length === 0) {
+        throw new Error("Video không có transcript tiếng Nhật.");
+      }
+      setTranscriptData(data.transcript);
+    } catch (err: any) {
+      setError(err.message || "Đã xảy ra lỗi");
+      setShowSearchBox(true);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleNeedMoreLines = useCallback((visibleIndices: number[]) => {
+    // We cannot use await directly with state setter if we rely on its latest value inside
+    // So we use functional state update to always get the freshest transcriptData
+    setTranscriptData(prevData => {
+      if (!prevData || visibleIndices.length === 0) return prevData;
+
+      const maxVisibleIndex = Math.max(...visibleIndices);
+      const minVisibleIndex = Math.min(...visibleIndices);
+
+      const chunkSize = 20;
+      const minChunkStart = Math.floor(minVisibleIndex / chunkSize) * chunkSize;
+      const maxChunkStart = Math.floor(maxVisibleIndex / chunkSize) * chunkSize;
+      const lookaheadChunkStart = maxChunkStart + chunkSize;
+
+      const chunksToLoad = new Set([minChunkStart, maxChunkStart, lookaheadChunkStart]);
+      let shouldFetch = false;
+      const chunksThatNeedFetch: number[] = [];
+
+      for (const chunkStart of chunksToLoad) {
+        if (chunkStart >= prevData.length) continue;
+        const chunkEnd = Math.min(chunkStart + chunkSize, prevData.length);
+
+        let needsTranslation = false;
+        for (let i = chunkStart; i < chunkEnd; i++) {
+          if (!prevData[i].isTranslated) {
+            needsTranslation = true;
+            break;
+          }
+        }
+
+        if (needsTranslation && !translatingChunksRef.current.has(chunkStart)) {
+          translatingChunksRef.current.add(chunkStart);
+          chunksThatNeedFetch.push(chunkStart);
+          shouldFetch = true;
+        }
+      }
+
+      if (shouldFetch) {
+        // Fire async fetch out of band so we don't block the render cycle
+        setTimeout(async () => {
+          for (const chunkStart of chunksThatNeedFetch) {
+            // Read from latest ref to get actual original array indices properly
+            const freshestData = transcriptDataRef.current;
+            if (!freshestData) continue;
+
+            const chunkEnd = Math.min(chunkStart + chunkSize, freshestData.length);
+
+            // Map the exact indices from the actual position in the array
+            const actualLinesToTranslate = freshestData.slice(chunkStart, chunkEnd).map((l, i) => ({
+              index: chunkStart + i,
+              text: l.text
+            }));
+
+            try {
+              const apiKey = localStorage.getItem('gemini_api_key') || "";
+              const res = await fetch('/api/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lines: actualLinesToTranslate, apiKey })
+              });
+
+              if (!res.ok) throw new Error("Translation failed");
+
+              const { translated } = await res.json();
+
+              setTranscriptData(currentData => {
+                if (!currentData) return currentData;
+                const newData = [...currentData];
+                translated.forEach((t: any) => {
+                  if (newData[t.index]) {
+                    newData[t.index] = {
+                      ...newData[t.index],
+                      tokens: t.tokens && t.tokens.length > 0 ? t.tokens : newData[t.index].tokens,
+                      romaji: t.romaji,
+                      translation: t.translation,
+                      isTranslated: true
+                    };
+                  }
+                });
+                return newData;
+              });
+            } catch (err) {
+              console.error("Lazy load translation error", err);
+              setTranscriptData(currentData => {
+                if (!currentData) return currentData;
+                const newData = [...currentData];
+                for (let i = chunkStart; i < chunkEnd; i++) {
+                  if (newData[i] && !newData[i].isTranslated) {
+                    newData[i] = {
+                      ...newData[i],
+                      romaji: "Lỗi kết nối API",
+                      translation: "Không thể dịch đoạn này",
+                      isTranslated: true
+                    };
+                  }
+                }
+                return newData;
+              });
+            } finally {
+              translatingChunksRef.current.delete(chunkStart);
+            }
+          }
+        }, 0);
+      }
+
+      return prevData;
+    });
+  }, []); // Functional set state is safe
+
+  const currentLine = transcriptData?.find(
+    (l) => currentTime >= l.start && currentTime < l.start + l.duration
+  );
+
+  // Calculate translation progress
+  const totalLines = transcriptData?.length || 0;
+  const translatedCount = transcriptData?.filter(l => l.isTranslated).length || 0;
+  const progressPercent = totalLines > 0 ? (translatedCount / totalLines) * 100 : 0;
+
+  return (
+    <div className="relative z-10 max-w-[760px] mx-auto px-6 h-[100dvh] flex flex-col">
+      <div className="flex-none">
+        <Header
+          onShowSearch={() => setShowSearchBox(!showSearchBox)}
+          fontSizeMultiplier={fontSizeMultiplier}
+          setFontSizeMultiplier={setFontSizeMultiplier}
+        />
+
+        {showSearchBox && !isLoading && (
+          <VideoIntake onSubmit={handleUrlSubmit} error={error} />
+        )}
+
+        {isLoading && (
+          <div className="my-8 flex flex-col items-center gap-3">
+            <div className="text-[var(--ink-soft)] font-sans text-sm">
+              Đang phân tích cấu trúc ngữ pháp...
+            </div>
+            {/* Indeterminate loading bar */}
+            <div className="w-full max-w-[200px] h-1.5 bg-[var(--line)] rounded-full overflow-hidden relative">
+              <div className="absolute top-0 bottom-0 left-0 bg-[var(--persimmon)] w-1/3 rounded-full animate-[pulse_1s_ease-in-out_infinite] blur-[1px]"></div>
+            </div>
+          </div>
+        )}
+
+        {videoId && transcriptData && (
+          <div className="mt-2 mb-2">
+            <VideoPlayer
+              videoId={videoId}
+              currentLine={currentLine}
+              showFurigana={showFurigana}
+              onTimeUpdate={setCurrentTime}
+              onToggleFurigana={() => setShowFurigana(!showFurigana)}
+              seekTo={seekTo}
+              onSeeked={() => setSeekTo(null)}
+            />
+
+            <div className="flex items-center justify-between mt-2">
+              <div className="font-sans text-[11px] text-[var(--ink-faint)]">
+                Phím tắt: <kbd className="font-sans text-[10.5px] border border-[var(--line)] rounded-[3px] px-1.5 py-[1px] bg-white">Space</kbd> phát/tạm dừng · <kbd className="font-sans text-[10.5px] border border-[var(--line)] rounded-[3px] px-1.5 py-[1px] bg-white">←</kbd> <kbd className="font-sans text-[10.5px] border border-[var(--line)] rounded-[3px] px-1.5 py-[1px] bg-white">→</kbd> lùi/tới câu
+              </div>
+
+              {/* Progress Bar for Translation */}
+              <div className="flex items-center gap-2" title={`Tiến độ dịch: ${translatedCount}/${totalLines} câu`}>
+                <span className="font-sans text-[10px] text-[var(--ink-faint)]">Dịch</span>
+                <div className="w-24 h-1.5 bg-[var(--line)] rounded-full overflow-hidden relative">
+                  <div
+                    className="absolute top-0 left-0 bottom-0 bg-[var(--moss)] transition-all duration-500 ease-out rounded-full"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {transcriptData && (
+        <div className="flex-1 min-h-0 overflow-y-auto scroll-area">
+          <Transcript
+            lines={transcriptData}
+            currentTime={currentTime}
+            onLineClick={(time) => setSeekTo(time)}
+            showFurigana={showFurigana}
+            onNeedMoreLines={handleNeedMoreLines}
+            fontSizeMultiplier={fontSizeMultiplier}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

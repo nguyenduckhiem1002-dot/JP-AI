@@ -1,0 +1,11 @@
+--- src/app/learn/page.tsx
++++ src/app/learn/page.tsx
+@@ -101,7 +101,7 @@
+     // We cannot use await directly with state setter if we rely on its latest value inside
+     // So we use functional state update to always get the freshest transcriptData
+     setTranscriptData(prevData => {
+-      if (!prevData) return prevData;
++      if (!prevData || visibleIndices.length === 0) return prevData;
+ 
+       const maxVisibleIndex = Math.max(...visibleIndices);
+       const minVisibleIndex = Math.min(...visibleIndices);

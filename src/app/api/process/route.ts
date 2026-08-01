@@ -1,0 +1,132 @@
+import { NextResponse } from "next/server";
+import { getCache, setCache } from "@/lib/simpleCache";
+import { fetchTranscript } from "@/lib/transcript";
+import { tokenizeText } from "@/lib/tokenize";
+import jaconv from 'jaconv';
+import { callGeminiWithFallback } from "@/lib/gemini";
+import { tokensToRomaji } from "@/lib/romaji";
+
+function kataToHira(kata: string) {
+  if (!kata) return "";
+  return jaconv.toHiragana(kata);
+}
+
+export async function POST(req: Request) {
+  try {
+    const { videoId, apiKey } = await req.json();
+    if (!videoId) return NextResponse.json({ error: "Missing videoId" }, { status: 400 });
+
+    const cacheKey = `transcript:${videoId}`;
+    const cached = getCache(cacheKey);
+    if (cached) return NextResponse.json({ transcript: cached });
+
+    // 1. Fetch transcript
+    console.log("Fetching transcript for", videoId);
+    let rawTranscript = [];
+    try {
+      rawTranscript = await fetchTranscript(videoId);
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
+
+    if (!rawTranscript || rawTranscript.length === 0) {
+      return NextResponse.json({ error: "Không lấy được phụ đề" }, { status: 400 });
+    }
+
+    // 2. CHỈ Tokenize 20 câu đầu tiên để load cực nhanh
+    const initialBatch = rawTranscript.slice(0, 20);
+    const restBatch = rawTranscript.slice(20);
+
+    console.log("Tokenizing initial batch locally...");
+    const tokenizedInitial = await Promise.all(
+      initialBatch.map(async (line) => {
+        const tokens = await tokenizeText(line.text);
+        const cleanTokens = tokens.map(t => ({
+          text: t.text,
+          reading: t.reading ? kataToHira(t.reading) : undefined,
+          pos: t.pos
+        }));
+
+        return {
+          start: line.start,
+          duration: line.duration,
+          text: line.text,
+          tokens: cleanTokens,
+          isTokenized: true
+        };
+      })
+    );
+
+    // 3. Dịch 20 câu đầu
+    let finalInitialLines = tokenizedInitial.map(l => ({ ...l, romaji: "", translation: "", isTranslated: false }));
+
+    if (apiKey) {
+      console.log(`Calling Gemini for initial batch translation`);
+      const schema = {
+        type: "ARRAY",
+        description: "Bản dịch từng dòng phụ đề, đúng thứ tự với đầu vào",
+        items: {
+          type: "OBJECT",
+          properties: {
+            index: { type: "NUMBER", description: "Chỉ số dòng gốc" },
+            translation: { type: "STRING", description: "Bản dịch tiếng Việt tự nhiên" },
+          },
+          required: ["index", "translation"]
+        }
+      };
+
+      const inputLines = tokenizedInitial.map((l, i) => ({ index: i, text: l.text }));
+      const prompt = `Bạn là biên dịch viên tiếng Nhật - tiếng Việt chuyên dịch phụ đề video (hội thoại nói tự nhiên).
+Dưới đây là các dòng phụ đề liên tiếp. Hãy đọc TOÀN BỘ các dòng theo mạch để hiểu đúng ngữ cảnh, nhưng khi trả kết quả PHẢI dịch tương ứng đúng theo từng dòng gốc theo index.
+Yêu cầu:
+- Dịch tự nhiên, đúng văn phong hội thoại đời thường.
+- Giữ đúng sắc thái tiểu từ cuối câu.
+Dữ liệu đầu vào:
+${JSON.stringify(inputLines)}`;
+
+      let translatedData: any[] = [];
+      try {
+        const result = await callGeminiWithFallback('translation', { contents: [{ parts: [{ text: prompt }] }], schema }, apiKey);
+        if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+          translatedData = JSON.parse(result.candidates[0].content.parts[0].text);
+        }
+      } catch (geminiErr) {
+        console.error(`Gemini initial translation failed`, geminiErr);
+        translatedData = inputLines.map((_, idx) => ({ index: idx, translation: "Bản dịch (Lỗi API)" }));
+      }
+
+      finalInitialLines = tokenizedInitial.map((line, idx) => {
+        const match = translatedData.find((d: any) => d.index === idx);
+        return {
+          ...line,
+          romaji: tokensToRomaji(line.tokens),
+          translation: match?.translation || "",
+          isTranslated: !!match
+        };
+      });
+    }
+
+    // Combine
+    const finalLines = [
+      ...finalInitialLines,
+      ...restBatch.map((line) => ({
+        start: line.start,
+        duration: line.duration,
+        text: line.text,
+        // Fake single token for un-tokenized lines so UI doesn't crash
+        tokens: [{ text: line.text, pos: "Unknown" }],
+        romaji: "",
+        translation: "",
+        isTranslated: false,
+        isTokenized: false
+      }))
+    ];
+
+    setCache(cacheKey, finalLines);
+    return NextResponse.json({ transcript: finalLines });
+
+  } catch (error: any) {
+    console.error("Process API Error:", error);
+    return NextResponse.json({ error: error.message || "Lỗi xử lý video" }, { status: 500 });
+  }
+}

@@ -1,0 +1,17 @@
+--- src/app/learn/page.tsx
++++ src/app/learn/page.tsx
+@@ -107,9 +107,13 @@
+ 
+       const chunkSize = 20;
+       const minChunkStart = Math.floor(minVisibleIndex / chunkSize) * chunkSize;
+       const maxChunkStart = Math.floor(maxVisibleIndex / chunkSize) * chunkSize;
+       const lookaheadChunkStart = maxChunkStart + chunkSize;
+ 
+-      const chunksToLoad = new Set([minChunkStart, maxChunkStart, lookaheadChunkStart]);
++      const chunksToLoad = new Set<number>();
++      for (let i = minChunkStart; i <= lookaheadChunkStart; i += chunkSize) {
++        chunksToLoad.add(i);
++      }
++
+       let shouldFetch = false;
+       const chunksThatNeedFetch: number[] = [];

@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&family=Noto+Sans+JP:wght@400;500&family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --paper: #F6F3EA;
+    --paper-deep: #EFEADD;
+    --paper-current: #F1EBDA;
+    --ink: #23262B;
+    --ink-soft: #5B5E63;
+    --ink-faint: #9A9C9E;
+    --ink-past: #C7C4BA;
+    --indigo: #3C4A6B;
+    --indigo-soft: #5A6A90;
+    --persimmon: #B85A34;
+    --persimmon-soft: #D98A66;
+    --moss: #657357;
+    --line: #DCD4C2;
+    --line-soft: #E7E0D1;
+    --radius-s: 6px;
+    --radius-m: 10px;
+  }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Source Serif 4', Georgia, serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.035;
+    z-index: 0;
+    background-image: radial-gradient(var(--ink) 0.6px, transparent 0.6px);
+    background-size: 3px 3px;
+  }
+}
+
+@layer components {
+  /* Scroll Area */
+  .scroll-area {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--ink-past) transparent;
+  }
+  .scroll-area::-webkit-scrollbar { width: 6px; }
+  .scroll-area::-webkit-scrollbar-thumb { background: var(--ink-past); border-radius: 3px; }
+  .scroll-area::-webkit-scrollbar-track { background: transparent; }
+
+  ruby { ruby-align: center; }
+  rt {
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    font-weight: 400;
+  }
+}

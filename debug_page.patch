@@ -1,0 +1,18 @@
+--- src/app/learn/page.tsx
++++ src/app/learn/page.tsx
+@@ -102,13 +102,15 @@
+       if (!prevData || visibleIndices.length === 0) return prevData;
+ 
+       const maxVisibleIndex = Math.max(...visibleIndices);
+       const minVisibleIndex = Math.min(...visibleIndices);
++      console.log("Trigger lazy load - min:", minVisibleIndex, "max:", maxVisibleIndex);
+ 
+       const chunkSize = 20;
+       const minChunkStart = Math.floor(minVisibleIndex / chunkSize) * chunkSize;
+       const maxChunkStart = Math.floor(maxVisibleIndex / chunkSize) * chunkSize;
+       const lookaheadChunkStart = maxChunkStart + chunkSize;
+ 
+       const chunksToLoad = new Set([minChunkStart, maxChunkStart, lookaheadChunkStart]);
++      console.log("Chunks to load:", Array.from(chunksToLoad));
+       let shouldFetch = false;
+       const chunksThatNeedFetch: number[] = [];

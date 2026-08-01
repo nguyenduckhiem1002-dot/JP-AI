@@ -1,0 +1,13 @@
+--- src/components/Transcript.tsx
++++ src/components/Transcript.tsx
+@@ -52,9 +52,7 @@
+         if (changed) {
+           clearTimeout(timeoutId);
+           timeoutId = setTimeout(() => {
+-            if (visibleIndices.size > 0) {
+-              onNeedMoreLines(Array.from(visibleIndices));
+-            }
++            onNeedMoreLines(Array.from(visibleIndices));
+           }, 300); // debounce slightly to avoid spamming
+         }
+       },
