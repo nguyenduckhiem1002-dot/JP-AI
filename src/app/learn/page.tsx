@@ -105,7 +105,7 @@ export default function LearnPage() {
       const minVisibleIndex = Math.min(...visibleIndices);
 
       const chunkSize = 20;
-      const minChunkStart = Math.floor(minVisibleIndex / chunkSize) * chunkSize;
+      const minChunkStart = Math.max(0, Math.floor(minVisibleIndex / chunkSize) * chunkSize - chunkSize);
       const maxChunkStart = Math.floor(maxVisibleIndex / chunkSize) * chunkSize;
       const lookaheadChunkStart = maxChunkStart + chunkSize;
 
@@ -113,6 +113,7 @@ export default function LearnPage() {
       for (let i = minChunkStart; i <= lookaheadChunkStart; i += chunkSize) {
         chunksToLoad.add(i);
       }
+      console.log("Chunks to load:", Array.from(chunksToLoad));
       let shouldFetch = false;
       const chunksThatNeedFetch: number[] = [];
 

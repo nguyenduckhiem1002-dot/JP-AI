@@ -28,10 +28,12 @@
       "Bash(findstr :3000)",
       "Bash(taskkill //PID 4220 //F)",
       "Bash(cat C:\\\\\\\\Users\\\\\\\\CNTT-K~1\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\g--JP-AI\\\\\\\\07a5f0bc-de4e-4afe-a233-c3e343706a15\\\\\\\\tasks\\\\\\\\bshylrhbd.output)",
-      "Bash(taskkill //PID 12784 //F)"
+      "Bash(taskkill //PID 12784 //F)",
+      "Bash(rm *.patch *.orig *.rej)"
     ],
     "additionalDirectories": [
-      "G:\\JP-AI\\.git"
+      "G:\\JP-AI\\.git",
+      "G:\\JP-AI"
     ]
   }
 }
