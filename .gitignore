@@ -42,3 +42,5 @@ next-env.d.ts
 *.patch
 *.orig
 *.rej
+.claude/worktrees/
+!.claude
