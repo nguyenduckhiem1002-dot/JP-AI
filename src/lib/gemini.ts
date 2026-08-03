@@ -9,14 +9,17 @@ export async function callGeminiWithFallback(task: 'translation' | 'wordLookup',
 
   for (const model of MODEL_CHAINS[task]) {
     try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 15000);
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json', 
+          headers: {
+            'Content-Type': 'application/json',
             'x-goog-api-key': key
           },
+          signal: controller.signal,
           body: JSON.stringify({
             contents: payload.contents,
             generationConfig: {
@@ -27,6 +30,7 @@ export async function callGeminiWithFallback(task: 'translation' | 'wordLookup',
           }),
         }
       );
+      clearTimeout(id);
       if (res.status === 429 || res.status === 503) continue; // fallback
       if (!res.ok) throw new Error(`Gemini error ${res.status}`);
       return await res.json();

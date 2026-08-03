@@ -29,7 +29,11 @@
       "Bash(taskkill //PID 4220 //F)",
       "Bash(cat C:\\\\\\\\Users\\\\\\\\CNTT-K~1\\\\\\\\AppData\\\\\\\\Local\\\\\\\\Temp\\\\\\\\claude\\\\\\\\g--JP-AI\\\\\\\\07a5f0bc-de4e-4afe-a233-c3e343706a15\\\\\\\\tasks\\\\\\\\bshylrhbd.output)",
       "Bash(taskkill //PID 12784 //F)",
-      "Bash(rm *.patch *.orig *.rej)"
+      "Bash(rm *.patch *.orig *.rej)",
+      "PowerShell(npm run lint)",
+      "mcp__exa__web_search_exa",
+      "Bash(git -C \"G:/JP-AI/.claude/worktrees/agent-acce42a2e1bfa2584/.claude/worktrees/agent-abf5ed551e0db4d45\" diff -- src/app/learn/page.tsx src/components/Header.tsx src/components/Transcript.tsx src/components/VideoIntake.tsx src/components/VideoPlayer.tsx)",
+      "PowerShell(npm run build)"
     ],
     "additionalDirectories": [
       "G:\\JP-AI\\.git",

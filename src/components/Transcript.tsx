@@ -1,26 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import { TranscriptLine } from "@/app/learn/page";
 
+import { getActiveTranscriptIndex } from "@/lib/transcript";
+
 interface TranscriptProps {
   lines: TranscriptLine[];
   currentTime: number;
   onLineClick: (time: number) => void;
   showFurigana: boolean;
+  showRomaji: boolean;
   onNeedMoreLines?: (visibleIndices: number[]) => void;
-  fontSizeMultiplier?: number;
+  fontKanji?: number;
+  fontFuri?: number;
+  fontViet?: number;
 }
 
-export default function Transcript({ lines, currentTime, onLineClick, showFurigana, onNeedMoreLines, fontSizeMultiplier = 1 }: TranscriptProps) {
+export default function Transcript({ lines, currentTime, onLineClick, showFurigana, showRomaji, onNeedMoreLines, fontKanji = 23, fontFuri = 11, fontViet = 14.5 }: TranscriptProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLDivElement>(null);
   const [activeWordData, setActiveWordData] = useState<{lineIdx: number, wordIdx: number, loading: boolean, data?: any} | null>(null);
 
+  const currentLineIdx = getActiveTranscriptIndex(lines, currentTime);
+  const prevLineIdxRef = useRef(-1);
+
   // Auto-scroll
   useEffect(() => {
-    if (activeLineRef.current) {
+    if (activeLineRef.current && currentLineIdx !== -1 && currentLineIdx !== prevLineIdxRef.current) {
       activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      prevLineIdxRef.current = currentLineIdx;
     }
-  }, [currentTime]);
+  }, [currentLineIdx]);
 
   // Use IntersectionObserver to accurately detect which lines are visible
   // and pass that array up to trigger translation fetching
@@ -56,7 +65,7 @@ export default function Transcript({ lines, currentTime, onLineClick, showFuriga
         }
       },
       {
-        root: containerRef.current,
+        root: document.getElementById('transcript-scroll-area'), // Use the actual scroll area as root
         rootMargin: '200px 0px 200px 0px', // trigger earlier, especially on fast scrolls
         threshold: 0
       }
@@ -109,8 +118,8 @@ export default function Transcript({ lines, currentTime, onLineClick, showFuriga
 
       <div className="flex flex-col">
         {lines.map((line, idx) => {
-          const isPast = currentTime >= line.start + line.duration;
-          const isCurrent = currentTime >= line.start && currentTime < line.start + line.duration;
+          const isPast = currentLineIdx !== -1 && idx < currentLineIdx;
+          const isCurrent = idx === currentLineIdx;
 
           // Safe fallback for un-tokenized lines
           const tokensToRender = (line.tokens && line.tokens.length > 0 && line.tokens[0].pos !== "Unknown")
@@ -140,81 +149,75 @@ export default function Transcript({ lines, currentTime, onLineClick, showFuriga
               <div className="min-w-0">
                 <div
                   className={`font-[family-name:var(--font-jp)] font-semibold leading-[1.9] ${isPast ? 'text-[var(--ink-past)]' : 'text-[var(--ink)]'} ${!showFurigana ? 'no-furi' : ''}`}
-                  style={{ fontFamily: "'Shippori Mincho', serif", fontSize: `${23 * fontSizeMultiplier}px` }}
+                  style={{ fontFamily: "'Shippori Mincho', serif", fontSize: `${fontKanji}px` }}
                 >
                   {tokensToRender.map((token, tIdx) => {
                     const isWordActive = activeWordData?.lineIdx === idx && activeWordData?.wordIdx === tIdx;
+                    const isKaraokeActive = isCurrent && token.start !== undefined && token.end !== undefined
+                      && currentTime >= token.start && currentTime < token.end;
+                    const tokenClass = isKaraokeActive
+                      ? "border-solid border-[var(--persimmon)] bg-[var(--paper-current)] text-[var(--persimmon)] rounded"
+                      : isWordActive
+                        ? "border-solid border-[var(--persimmon)] text-[var(--persimmon)]"
+                        : "border-[var(--ink-faint)] hover:border-[var(--persimmon)]";
 
                     if (token.reading && token.reading !== token.text) {
                       return (
                         <ruby key={tIdx}>
-                          <span
-                            className={`cursor-pointer px-[1px] border-b-[1.5px] border-dotted transition-colors duration-120 ${isWordActive ? 'border-solid border-[var(--persimmon)] text-[var(--persimmon)]' : 'border-[var(--ink-faint)] hover:border-[var(--persimmon)]'}`}
+                          <button
+                            className={`cursor-pointer px-[1px] border-b-[1.5px] border-dotted transition-colors duration-120 bg-transparent ${tokenClass}`}
                             onClick={(e) => handleWordClick(e, idx, tIdx, token.text, line.text)}
                           >
                             {token.text}
-                          </span>
-                          {showFurigana && <rt className={isPast ? 'text-[var(--ink-past)]' : ''} style={{ fontSize: `${11 * fontSizeMultiplier}px` }}>{token.reading}</rt>}
+                          </button>
+                          {showFurigana && <rt className={isPast ? 'text-[var(--ink-past)]' : ''} style={{ fontSize: `${fontFuri}px` }}>{token.reading}</rt>}
                         </ruby>
                       );
                     }
                     return (
-                      <span
+                      <button
                         key={tIdx}
-                        className={`cursor-pointer px-[1px] border-b-[1.5px] border-dotted transition-colors duration-120 ${isWordActive ? 'border-solid border-[var(--persimmon)] text-[var(--persimmon)]' : 'border-[var(--ink-faint)] hover:border-[var(--persimmon)]'}`}
+                        className={`cursor-pointer px-[1px] border-b-[1.5px] border-dotted transition-colors duration-120 bg-transparent ${tokenClass}`}
                         onClick={(e) => handleWordClick(e, idx, tIdx, token.text, line.text)}
                       >
                         {token.text}
-                      </span>
+                      </button>
                     );
                   })}
                 </div>
 
-                {line.romaji && (
-                  <div className={`font-sans tracking-[0.02em] mt-1 ${isPast ? 'text-[var(--ink-past)]' : 'text-[var(--ink-faint)]'}`} style={{ fontSize: `${12.5 * fontSizeMultiplier}px` }}>
+                {showRomaji && line.romaji && (
+                  <div className={`font-sans tracking-[0.02em] mt-1 ${isPast ? 'text-[var(--ink-past)]' : 'text-[var(--ink-faint)]'}`} style={{ fontSize: `${Math.round(fontViet * 0.85)}px` }}>
                     {line.romaji}
                   </div>
                 )}
 
                 {line.translation && (
-                  <div className={`font-serif italic mt-1.25 ${isPast ? 'text-[var(--ink-past)]' : 'text-[var(--ink-soft)]'}`} style={{ fontFamily: "'Source Serif 4', serif", fontSize: `${14.5 * fontSizeMultiplier}px` }}>
+                  <div className={`font-serif mt-1.25 ${isPast ? 'text-[var(--ink-past)]' : 'text-[var(--ink-soft)]'}`} style={{ fontFamily: "'Source Serif 4', serif", fontSize: `${fontViet}px` }}>
                     {line.translation}
                   </div>
                 )}
 
                 {/* Loading state for chunk translation */}
                 {line.isTranslated === false && (
-                  <div className="font-sans text-[var(--indigo)] italic mt-1 animate-pulse" style={{ fontSize: `${11 * fontSizeMultiplier}px` }}>
+                  <div className="font-sans text-[var(--indigo)] italic mt-1 animate-pulse" style={{ fontSize: `${Math.round(fontViet * 0.75)}px` }}>
                     Đang phân tích cấu trúc...
                   </div>
                 )}
 
                 {activeWordData?.lineIdx === idx && (
-                  <div className="flex mt-2.5 px-3 py-2.5 bg-white border-l-2 border-[var(--persimmon)] rounded-r-[var(--radius-s)] font-sans text-[var(--ink-soft)] leading-[1.6] items-center justify-between gap-2.5 shadow-sm" style={{ fontSize: `${12.5 * fontSizeMultiplier}px` }}>
+                  <div className="flex mt-2.5 px-3 py-2.5 bg-white border-l-2 border-[var(--persimmon)] rounded-r-[var(--radius-s)] font-sans text-[var(--ink-soft)] leading-[1.6] items-center justify-between gap-2.5 shadow-sm" style={{ fontSize: `${Math.round(fontViet * 0.85)}px` }}>
                     {activeWordData.loading ? (
-                      <span className="italic" style={{ fontSize: `${11 * fontSizeMultiplier}px` }}>Đang tra cứu...</span>
+                      <span className="italic" style={{ fontSize: `${Math.round(fontViet * 0.75)}px` }}>Đang tra cứu...</span>
                     ) : (
                       <>
                         <span className="flex items-baseline gap-1.5 flex-wrap">
-                          <span className="text-[var(--moss)]" style={{ fontSize: `${11 * fontSizeMultiplier}px` }}>{activeWordData.data?.pos}</span>
-                          <b className="font-[family-name:var(--font-jp)] text-[var(--ink)] font-semibold" style={{ fontFamily: "'Shippori Mincho', serif", fontSize: `${15 * fontSizeMultiplier}px` }}>{tokensToRender[activeWordData.wordIdx]?.text}</b>
-                          {activeWordData.data?.reading && <span className="text-[var(--ink-soft)] mr-1" style={{ fontSize: `${11 * fontSizeMultiplier}px` }}>({activeWordData.data.reading})</span>}
+                          <span className="text-[var(--moss)]" style={{ fontSize: `${Math.round(fontViet * 0.75)}px` }}>{activeWordData.data?.pos}</span>
+                          <b className="font-[family-name:var(--font-jp)] text-[var(--ink)] font-semibold" style={{ fontFamily: "'Shippori Mincho', serif", fontSize: `${Math.round(fontKanji * 0.65)}px` }}>{tokensToRender[activeWordData.wordIdx]?.text}</b>
+                          {activeWordData.data?.reading && <span className="text-[var(--ink-soft)] mr-1" style={{ fontSize: `${Math.round(fontViet * 0.75)}px` }}>({activeWordData.data.reading})</span>}
                           <span>{activeWordData.data?.meaning}</span>
                         </span>
-                        <button
-                          className="flex-none font-sans text-[var(--indigo)] bg-transparent border border-[var(--indigo)] rounded px-2.5 py-1.5 cursor-pointer whitespace-nowrap transition-colors duration-120 hover:bg-[var(--indigo)] hover:text-white active:scale-95"
-                          style={{ fontSize: `${11 * fontSizeMultiplier}px` }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            // Implementation for saving vocabulary would go here
-                            const btn = e.currentTarget;
-                            btn.textContent = 'Đã lưu ✓';
-                            btn.className = "flex-none font-sans text-white bg-[var(--moss)] border border-[var(--moss)] rounded px-2.5 py-1.5 cursor-default whitespace-nowrap";
-                            btn.style.fontSize = `${11 * fontSizeMultiplier}px`;
-                          }}
-                        >
-                          + Lưu từ vựng
-                        </button>
+                        {/* Lưu từ vựng sẽ được implement sau, tạm ẩn */}
                       </>
                     )}
                   </div>

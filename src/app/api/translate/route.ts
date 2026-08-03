@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { callGeminiWithFallback } from "@/lib/gemini";
-import { tokenizeText } from "@/lib/tokenize";
+import { assignTokenTimings, tokenizeText } from "@/lib/tokenize";
 import jaconv from 'jaconv';
 import { tokensToRomaji } from "@/lib/romaji";
 
@@ -13,10 +13,23 @@ export async function POST(req: Request) {
   try {
     const { lines, apiKey } = await req.json();
     if (!lines || !lines.length) return NextResponse.json({ translated: [] });
+    if (lines.length > 50) return NextResponse.json({ error: "Too many lines" }, { status: 400 });
+
+    // Validate size to prevent abuse
+    const MAX_LINE_LEN = 500;
+    const safeLines = lines.map((l: any) => ({
+      index: Number(l.index),
+      text: String(l.text).substring(0, MAX_LINE_LEN),
+      start: Number(l.start),
+      duration: Number(l.duration)
+    }));
 
     // 1. Tokenize lines first (since they were skipped in the initial load)
-    const tokenizedLines = await Promise.all(
-      lines.map(async (line: any) => {
+    const tokenizedLines = [];
+    for (let i = 0; i < safeLines.length; i += 5) {
+      const batch = safeLines.slice(i, i + 5);
+      const batchResult = await Promise.all(
+        batch.map(async (line: any) => {
         const tokens = await tokenizeText(line.text);
         const cleanTokens = tokens.map(t => ({
           text: t.text,
@@ -27,11 +40,13 @@ export async function POST(req: Request) {
         return {
           index: line.index,
           text: line.text,
-          tokens: cleanTokens, // We need to return this so UI has Furigana
+          tokens: assignTokenTimings(line.start, line.duration, cleanTokens),
           romaji: tokensToRomaji(cleanTokens)
         };
       })
-    );
+      );
+      tokenizedLines.push(...batchResult);
+    }
 
     // 2. Call Gemini for translation
     let geminiTranslations: any[] = [];
@@ -49,7 +64,7 @@ export async function POST(req: Request) {
         }
       };
 
-      const inputForGemini = lines.map((l: any) => ({ index: l.index, text: l.text }));
+      const inputForGemini = safeLines.map((l: any) => ({ index: l.index, text: l.text }));
 
       const prompt = `Bạn là biên dịch viên tiếng Nhật - tiếng Việt chuyên dịch phụ đề video (hội thoại nói tự nhiên, không phải văn viết trang trọng).
 
@@ -82,6 +97,7 @@ ${JSON.stringify(inputForGemini)}`;
         tokens: line.tokens, // Returning tokens is crucial for lazy furigana
         romaji: line.romaji,
         translation: apiKey ? (transMatch?.translation || "Bản dịch (Lỗi API)") : "(Nhập API key để hiện bản dịch)",
+        isTranslated: apiKey ? !!transMatch : false,
       };
     });
 

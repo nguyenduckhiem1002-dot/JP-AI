@@ -6,6 +6,8 @@ import VideoIntake from "@/components/VideoIntake";
 import VideoPlayer from "@/components/VideoPlayer";
 import Transcript from "@/components/Transcript";
 
+import { getActiveTranscriptIndex } from "@/lib/transcript";
+
 export type TranscriptLine = {
   start: number;
   duration: number;
@@ -13,7 +15,7 @@ export type TranscriptLine = {
   romaji: string;
   translation: string;
   isTranslated?: boolean;
-  tokens: { text: string; reading?: string; pos: string; meaning?: string }[];
+  tokens: { text: string; reading?: string; pos: string; meaning?: string; start?: number; end?: number }[];
 };
 
 export default function LearnPage() {
@@ -23,6 +25,7 @@ export default function LearnPage() {
   const [error, setError] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [showFurigana, setShowFurigana] = useState(true);
+  const [showRomaji, setShowRomaji] = useState(true);
   const [seekTo, setSeekTo] = useState<number | null>(null);
   const [showSearchBox, setShowSearchBox] = useState(true);
 
@@ -33,15 +36,28 @@ export default function LearnPage() {
   }, [transcriptData]);
 
   // Font settings
-  const [fontSizeMultiplier, setFontSizeMultiplier] = useState(1);
+  const [fontKanji, setFontKanji] = useState(23);
+  const [fontFuri, setFontFuri] = useState(11);
+  const [fontViet, setFontViet] = useState(14.5);
 
   useEffect(() => {
     const savedSize = localStorage.getItem('app_font_size');
-    if (savedSize) setFontSizeMultiplier(parseFloat(savedSize));
+    if (savedSize) {
+      try {
+        const sizes = JSON.parse(savedSize);
+        if (sizes.kanji) setFontKanji(sizes.kanji);
+        if (sizes.furi) setFontFuri(sizes.furi);
+        if (sizes.viet) setFontViet(sizes.viet);
+      } catch {
+        // ignore
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Track which chunks we are currently translating to avoid duplicate requests
   const translatingChunksRef = useRef<Set<number>>(new Set());
+  const requestGenerationRef = useRef(0);
 
   const handleUrlSubmit = async (url: string) => {
     let vidId = "";
@@ -68,6 +84,8 @@ export default function LearnPage() {
     setTranscriptData(null);
     setShowSearchBox(false);
     translatingChunksRef.current.clear(); // Reset translation state for new video
+    requestGenerationRef.current += 1;
+    const currentGen = requestGenerationRef.current;
 
     try {
       const apiKey = localStorage.getItem('gemini_api_key') || "";
@@ -83,15 +101,19 @@ export default function LearnPage() {
       }
 
       const data = await res.json();
+      if (currentGen !== requestGenerationRef.current) return;
       if (!data.transcript || data.transcript.length === 0) {
         throw new Error("Video không có transcript tiếng Nhật.");
       }
       setTranscriptData(data.transcript);
     } catch (err: any) {
+      if (currentGen !== requestGenerationRef.current) return;
       setError(err.message || "Đã xảy ra lỗi");
       setShowSearchBox(true);
     } finally {
-      setIsLoading(false);
+      if (currentGen === requestGenerationRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -137,6 +159,7 @@ export default function LearnPage() {
       }
 
       if (shouldFetch) {
+        const currentGen = requestGenerationRef.current;
         // Fire async fetch out of band so we don't block the render cycle
         setTimeout(async () => {
           for (const chunkStart of chunksThatNeedFetch) {
@@ -149,7 +172,9 @@ export default function LearnPage() {
             // Map the exact indices from the actual position in the array
             const actualLinesToTranslate = freshestData.slice(chunkStart, chunkEnd).map((l, i) => ({
               index: chunkStart + i,
-              text: l.text
+              text: l.text,
+              start: l.start,
+              duration: l.duration
             }));
 
             try {
@@ -163,6 +188,7 @@ export default function LearnPage() {
               if (!res.ok) throw new Error("Translation failed");
 
               const { translated } = await res.json();
+              if (currentGen !== requestGenerationRef.current) return;
 
               setTranscriptData(currentData => {
                 if (!currentData) return currentData;
@@ -174,13 +200,14 @@ export default function LearnPage() {
                       tokens: t.tokens && t.tokens.length > 0 ? t.tokens : newData[t.index].tokens,
                       romaji: t.romaji,
                       translation: t.translation,
-                      isTranslated: true
+                      isTranslated: t.isTranslated !== undefined ? t.isTranslated : true
                     };
                   }
                 });
                 return newData;
               });
             } catch (err) {
+              if (currentGen !== requestGenerationRef.current) return;
               console.error("Lazy load translation error", err);
               setTranscriptData(currentData => {
                 if (!currentData) return currentData;
@@ -198,7 +225,9 @@ export default function LearnPage() {
                 return newData;
               });
             } finally {
-              translatingChunksRef.current.delete(chunkStart);
+              if (currentGen === requestGenerationRef.current) {
+                translatingChunksRef.current.delete(chunkStart);
+              }
             }
           }
         }, 0);
@@ -208,13 +237,12 @@ export default function LearnPage() {
     });
   }, []); // Functional set state is safe
 
-  const currentLine = transcriptData?.find(
-    (l) => currentTime >= l.start && currentTime < l.start + l.duration
-  );
+  const currentLineIdx = transcriptData ? getActiveTranscriptIndex(transcriptData, currentTime) : -1;
+  const currentLine = currentLineIdx !== -1 && transcriptData ? transcriptData[currentLineIdx] : undefined;
 
   // Calculate translation progress
   const totalLines = transcriptData?.length || 0;
-  const translatedCount = transcriptData?.filter(l => l.isTranslated).length || 0;
+  const translatedCount = transcriptData?.filter(l => l.isTranslated && l.translation && l.translation !== '(Nhập API key để hiện bản dịch)').length || 0;
   const progressPercent = totalLines > 0 ? (translatedCount / totalLines) * 100 : 0;
 
   return (
@@ -222,8 +250,14 @@ export default function LearnPage() {
       <div className="flex-none">
         <Header
           onShowSearch={() => setShowSearchBox(!showSearchBox)}
-          fontSizeMultiplier={fontSizeMultiplier}
-          setFontSizeMultiplier={setFontSizeMultiplier}
+          fontKanji={fontKanji}
+          fontFuri={fontFuri}
+          fontViet={fontViet}
+          onFontChange={(type, val) => {
+            if (type === 'kanji') setFontKanji(val);
+            if (type === 'furi') setFontFuri(val);
+            if (type === 'viet') setFontViet(val);
+          }}
         />
 
         {showSearchBox && !isLoading && (
@@ -248,8 +282,10 @@ export default function LearnPage() {
               videoId={videoId}
               currentLine={currentLine}
               showFurigana={showFurigana}
+              showRomaji={showRomaji}
               onTimeUpdate={setCurrentTime}
               onToggleFurigana={() => setShowFurigana(!showFurigana)}
+              onToggleRomaji={() => setShowRomaji(!showRomaji)}
               seekTo={seekTo}
               onSeeked={() => setSeekTo(null)}
             />
@@ -275,14 +311,17 @@ export default function LearnPage() {
       </div>
 
       {transcriptData && (
-        <div className="flex-1 min-h-0 overflow-y-auto scroll-area">
+        <div id="transcript-scroll-area" className="flex-1 min-h-0 overflow-y-auto scroll-area">
           <Transcript
             lines={transcriptData}
             currentTime={currentTime}
             onLineClick={(time) => setSeekTo(time)}
             showFurigana={showFurigana}
+            showRomaji={showRomaji}
             onNeedMoreLines={handleNeedMoreLines}
-            fontSizeMultiplier={fontSizeMultiplier}
+            fontKanji={fontKanji}
+            fontFuri={fontFuri}
+            fontViet={fontViet}
           />
         </div>
       )}

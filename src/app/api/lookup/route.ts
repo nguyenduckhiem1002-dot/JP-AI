@@ -11,7 +11,7 @@ export async function POST(req: Request) {
     const cached = getCache(key);
     if (cached) return NextResponse.json(cached);
 
-    if (!apiKey && !process.env.GEMINI_API_KEY) {
+    if (!apiKey) {
       return NextResponse.json({
         word,
         pos: "Chưa rõ",

@@ -2,34 +2,58 @@ import { useState, useEffect } from "react";
 
 export default function Header({
   onShowSearch,
-  fontSizeMultiplier = 1,
-  setFontSizeMultiplier
+  fontKanji = 23,
+  fontFuri = 11,
+  fontViet = 14.5,
+  onFontChange
 }: {
   onShowSearch?: () => void,
-  fontSizeMultiplier?: number,
-  setFontSizeMultiplier?: (val: number) => void
+  fontKanji?: number,
+  fontFuri?: number,
+  fontViet?: number,
+  onFontChange?: (type: 'kanji'|'furi'|'viet', val: number) => void
 }) {
   const [showSettings, setShowSettings] = useState(false);
   const [apiKey, setApiKey] = useState("");
-  const [localFontSize, setLocalFontSize] = useState(fontSizeMultiplier);
+  const [localKanji, setLocalKanji] = useState(fontKanji);
+  const [localFuri, setLocalFuri] = useState(fontFuri);
+  const [localViet, setLocalViet] = useState(fontViet);
 
+  // Initialize local state lazily for localStorage to avoid hydration mismatch
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedKey = localStorage.getItem('gemini_api_key');
       if (savedKey) setApiKey(savedKey);
 
       const savedSize = localStorage.getItem('app_font_size');
-      if (savedSize) {
-        setLocalFontSize(parseFloat(savedSize));
-        if (setFontSizeMultiplier) setFontSizeMultiplier(parseFloat(savedSize));
+      if (savedSize && onFontChange) {
+        try {
+          const sizes = JSON.parse(savedSize);
+          if (sizes.kanji) { setLocalKanji(sizes.kanji); onFontChange('kanji', sizes.kanji); }
+          if (sizes.furi) { setLocalFuri(sizes.furi); onFontChange('furi', sizes.furi); }
+          if (sizes.viet) { setLocalViet(sizes.viet); onFontChange('viet', sizes.viet); }
+        } catch {
+          // fallback if old format
+          const multiplier = parseFloat(savedSize);
+          if (!isNaN(multiplier)) {
+            onFontChange('kanji', 23 * multiplier);
+            onFontChange('furi', 11 * multiplier);
+            onFontChange('viet', 14.5 * multiplier);
+          }
+        }
       }
     }
-  }, [setFontSizeMultiplier]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveSettings = () => {
     localStorage.setItem('gemini_api_key', apiKey);
-    localStorage.setItem('app_font_size', localFontSize.toString());
-    if (setFontSizeMultiplier) setFontSizeMultiplier(localFontSize);
+    localStorage.setItem('app_font_size', JSON.stringify({ kanji: localKanji, furi: localFuri, viet: localViet }));
+    if (onFontChange) {
+      onFontChange('kanji', localKanji);
+      onFontChange('furi', localFuri);
+      onFontChange('viet', localViet);
+    }
     setShowSettings(false);
   };
 
@@ -84,16 +108,40 @@ export default function Header({
             placeholder="AIzaSy..."
           />
 
-          <label className="block font-sans text-xs font-medium text-[var(--ink)] mb-2">Cỡ chữ (Bản ghi)</label>
+          <label className="block font-sans text-xs font-medium text-[var(--ink)] mb-2">Cỡ chữ Kanji</label>
           <div className="flex items-center gap-3 mb-4">
             <span className="font-sans text-xs text-[var(--ink-faint)]">A</span>
             <input
               type="range"
-              min="0.8"
-              max="1.8"
-              step="0.1"
-              value={localFontSize}
-              onChange={(e) => setLocalFontSize(parseFloat(e.target.value))}
+              min="14" max="40" step="1"
+              value={localKanji}
+              onChange={(e) => setLocalKanji(parseFloat(e.target.value))}
+              className="flex-1 accent-[var(--indigo)]"
+            />
+            <span className="font-sans text-sm text-[var(--ink-soft)] font-semibold">A</span>
+          </div>
+
+          <label className="block font-sans text-xs font-medium text-[var(--ink)] mb-2">Cỡ chữ Furigana</label>
+          <div className="flex items-center gap-3 mb-4">
+            <span className="font-sans text-xs text-[var(--ink-faint)]">A</span>
+            <input
+              type="range"
+              min="8" max="20" step="1"
+              value={localFuri}
+              onChange={(e) => setLocalFuri(parseFloat(e.target.value))}
+              className="flex-1 accent-[var(--indigo)]"
+            />
+            <span className="font-sans text-sm text-[var(--ink-soft)] font-semibold">A</span>
+          </div>
+
+          <label className="block font-sans text-xs font-medium text-[var(--ink)] mb-2">Cỡ chữ Dịch & Romaji</label>
+          <div className="flex items-center gap-3 mb-4">
+            <span className="font-sans text-xs text-[var(--ink-faint)]">A</span>
+            <input
+              type="range"
+              min="10" max="24" step="1"
+              value={localViet}
+              onChange={(e) => setLocalViet(parseFloat(e.target.value))}
               className="flex-1 accent-[var(--indigo)]"
             />
             <span className="font-sans text-sm text-[var(--ink-soft)] font-semibold">A</span>
@@ -102,7 +150,9 @@ export default function Header({
           <div className="flex justify-end gap-2">
             <button
               onClick={() => {
-                setLocalFontSize(fontSizeMultiplier); // Reset if canceled
+                setLocalKanji(fontKanji);
+                setLocalFuri(fontFuri);
+                setLocalViet(fontViet);
                 setShowSettings(false);
               }}
               className="px-3 py-1.5 text-xs font-sans text-[var(--ink-soft)] hover:text-[var(--ink)] transition-colors"

@@ -8,8 +8,10 @@ interface VideoPlayerProps {
   videoId: string;
   currentLine?: TranscriptLine;
   showFurigana: boolean;
+  showRomaji: boolean;
   onTimeUpdate: (time: number) => void;
   onToggleFurigana: () => void;
+  onToggleRomaji: () => void;
   seekTo: number | null;
   onSeeked: () => void;
 }
@@ -18,8 +20,10 @@ export default function VideoPlayer({
   videoId,
   currentLine,
   showFurigana,
+  showRomaji,
   onTimeUpdate,
   onToggleFurigana,
+  onToggleRomaji,
   seekTo,
   onSeeked
 }: VideoPlayerProps) {
@@ -64,7 +68,7 @@ export default function VideoPlayer({
           onTimeUpdate(time);
           hideCaptions(playerRef.current); // aggressively hide just in case
         }
-      }, 500);
+      }, 100);
     } else if (intervalRef.current) {
       clearInterval(intervalRef.current);
     }
@@ -142,6 +146,7 @@ export default function VideoPlayer({
 
         {/* Play/Pause Button Overlay */}
         <button
+          aria-label={isPlaying ? "Tạm dừng" : "Phát"}
           onClick={togglePlay}
           className="w-[52px] h-[52px] rounded-full border-[1.5px] border-white/70 bg-white/10 flex items-center justify-center cursor-pointer transition-transform duration-75 z-10 hover:bg-white/20 active:scale-[0.94] pointer-events-auto"
         >
@@ -163,26 +168,23 @@ export default function VideoPlayer({
         <span className="font-sans text-[11px] text-white/55 min-w-[78px]">
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
-        <div
-          className="flex-1 h-[3px] bg-white/20 rounded-sm relative cursor-pointer"
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const pos = (e.clientX - rect.left) / rect.width;
-            const newTime = pos * duration;
+        <input
+          type="range"
+          min={0}
+          max={duration || 100}
+          step={0.1}
+          value={currentTime}
+          aria-label="Thanh thời gian"
+          className="flex-1 h-[3px] bg-white/20 rounded-sm cursor-pointer appearance-none accent-[var(--persimmon-soft)]"
+          onChange={(e) => {
+            const newTime = parseFloat(e.target.value);
             if (playerRef.current) {
               playerRef.current.seekTo(newTime, true);
               setCurrentTime(newTime);
               onTimeUpdate(newTime);
             }
           }}
-        >
-          <div
-            className="absolute left-0 top-0 bottom-0 bg-[var(--persimmon-soft)] rounded-sm transition-all duration-300"
-            style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-          >
-            <div className="absolute right-[-4px] top-1/2 w-[9px] h-[9px] bg-[var(--persimmon-soft)] rounded-full -translate-y-1/2"></div>
-          </div>
-        </div>
+        />
         <select
           className="font-sans text-[11px] text-white/70 bg-white/10 border border-white/20 rounded px-1.5 py-[3px] cursor-pointer outline-none"
           onChange={(e) => {
@@ -199,9 +201,16 @@ export default function VideoPlayer({
         <button
           onClick={onToggleFurigana}
           className={`bg-transparent border-none cursor-pointer p-0.5 flex transition-colors duration-100 ${showFurigana ? 'text-[var(--persimmon-soft)]' : 'text-white/70 hover:text-white'}`}
-          title="Ẩn/hiện furigana ở bản ghi"
+          title="Ẩn/hiện Furigana"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h10M4 12h6M4 17h16"/></svg>
+        </button>
+        <button
+          onClick={onToggleRomaji}
+          className={`bg-transparent border-none cursor-pointer p-0.5 flex transition-colors duration-100 ${showRomaji ? 'text-[var(--persimmon-soft)]' : 'text-white/70 hover:text-white'}`}
+          title="Ẩn/hiện Romaji"
+        >
+          <span className="font-sans text-[11px] font-bold">R</span>
         </button>
       </div>
     </div>

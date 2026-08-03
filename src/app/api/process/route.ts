@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCache, setCache } from "@/lib/simpleCache";
 import { fetchTranscript } from "@/lib/transcript";
-import { tokenizeText } from "@/lib/tokenize";
+import { assignTokenTimings, tokenizeText } from "@/lib/tokenize";
 import jaconv from 'jaconv';
 import { callGeminiWithFallback } from "@/lib/gemini";
 import { tokensToRomaji } from "@/lib/romaji";
@@ -18,7 +18,14 @@ export async function POST(req: Request) {
 
     const cacheKey = `transcript:${videoId}`;
     const cached = getCache(cacheKey);
-    if (cached) return NextResponse.json({ transcript: cached });
+    if (cached) {
+      if (apiKey) {
+        // If we have cached tokenized lines but now we have an apiKey, we just need to send them back
+        // Real app might want to trigger a background translation here, but for now we rely on lazy load
+        return NextResponse.json({ transcript: cached });
+      }
+      return NextResponse.json({ transcript: cached });
+    }
 
     // 1. Fetch transcript
     console.log("Fetching transcript for", videoId);
@@ -51,7 +58,7 @@ export async function POST(req: Request) {
           start: line.start,
           duration: line.duration,
           text: line.text,
-          tokens: cleanTokens,
+          tokens: assignTokenTimings(line.start, line.duration, cleanTokens),
           isTokenized: true
         };
       })
@@ -108,7 +115,7 @@ ${JSON.stringify(inputLines)}`;
 
     // Combine
     const finalLines = [
-      ...finalInitialLines,
+      ...tokenizedInitial.map(l => ({ ...l, romaji: "", translation: "", isTranslated: false, isTokenized: true })),
       ...restBatch.map((line) => ({
         start: line.start,
         duration: line.duration,
@@ -123,6 +130,18 @@ ${JSON.stringify(inputLines)}`;
     ];
 
     setCache(cacheKey, finalLines);
+
+    if (apiKey) {
+      const translatedDataMap = new Map(finalInitialLines.map((l, i) => [i, l]));
+      const linesToSend = finalLines.map((l, i) => {
+        if (translatedDataMap.has(i)) {
+          return translatedDataMap.get(i);
+        }
+        return l;
+      });
+      return NextResponse.json({ transcript: linesToSend });
+    }
+
     return NextResponse.json({ transcript: finalLines });
 
   } catch (error: any) {
