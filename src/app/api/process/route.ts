@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCache, setCache } from "@/lib/simpleCache";
-import { fetchTranscript } from "@/lib/transcript";
-import { assignTokenTimings, tokenizeText } from "@/lib/tokenize";
+import { assignWordTimings, tokenizeText } from "@/lib/tokenize";
 import jaconv from 'jaconv';
 import { callGeminiWithFallback } from "@/lib/gemini";
 import { tokensToRomaji } from "@/lib/romaji";
+import { transcribeWithWhisper } from "@/lib/whisper";
 
 function kataToHira(kata: string) {
   if (!kata) return "";
@@ -27,17 +27,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ transcript: cached });
     }
 
-    // 1. Fetch transcript
-    console.log("Fetching transcript for", videoId);
-    let rawTranscript = [];
+    // 1. Nhận dạng giọng nói bằng Whisper (local) — có timing từng từ, không dùng phụ đề YouTube
+    console.log("Transcribing with Whisper", videoId);
+    let rawTranscript;
     try {
-      rawTranscript = await fetchTranscript(videoId);
+      rawTranscript = await transcribeWithWhisper(videoId);
     } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 400 });
+      console.error("Whisper failed:", e);
+      return NextResponse.json({ error: `Whisper lỗi: ${e.message}` }, { status: 500 });
     }
 
     if (!rawTranscript || rawTranscript.length === 0) {
-      return NextResponse.json({ error: "Không lấy được phụ đề" }, { status: 400 });
+      return NextResponse.json({ error: "Whisper không nhận dạng được lời thoại tiếng Nhật" }, { status: 400 });
     }
 
     // 2. CHỈ Tokenize 20 câu đầu tiên để load cực nhanh
@@ -58,7 +59,8 @@ export async function POST(req: Request) {
           start: line.start,
           duration: line.duration,
           text: line.text,
-          tokens: assignTokenTimings(line.start, line.duration, cleanTokens),
+          words: line.words,
+          tokens: assignWordTimings(line.start, line.duration, cleanTokens, line.words),
           isTokenized: true
         };
       })
@@ -120,6 +122,7 @@ ${JSON.stringify(inputLines)}`;
         start: line.start,
         duration: line.duration,
         text: line.text,
+        words: line.words,
         // Fake single token for un-tokenized lines so UI doesn't crash
         tokens: [{ text: line.text, pos: "Unknown" }],
         romaji: "",

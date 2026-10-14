@@ -44,3 +44,9 @@ next-env.d.ts
 *.rej
 .claude/worktrees/
 !.claude
+
+# vad cache
+/.cache/
+
+# whisper models (large binaries, download separately)
+/models/*.bin

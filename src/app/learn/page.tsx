@@ -15,6 +15,7 @@ export type TranscriptLine = {
   romaji: string;
   translation: string;
   isTranslated?: boolean;
+  words?: { text: string; start: number; end: number }[]; // Whisper word timings
   tokens: { text: string; reading?: string; pos: string; meaning?: string; start?: number; end?: number }[];
 };
 
@@ -174,7 +175,8 @@ export default function LearnPage() {
               index: chunkStart + i,
               text: l.text,
               start: l.start,
-              duration: l.duration
+              duration: l.duration,
+              words: l.words
             }));
 
             try {

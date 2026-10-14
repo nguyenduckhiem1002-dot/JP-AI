@@ -59,6 +59,49 @@ export function assignTokenTimings(
   });
 }
 
+export type TimedWord = { text: string; start: number; end: number };
+
+/**
+ * Time tokens from Whisper word timestamps by matching characters in order.
+ * Falls back to the length-weighted guess when there are no words.
+ */
+export function assignWordTimings(
+  lineStart: number,
+  lineDuration: number,
+  tokens: TranscriptToken[],
+  words?: TimedWord[]
+): TranscriptToken[] {
+  if (!words?.length) return assignTokenTimings(lineStart, lineDuration, tokens);
+
+  // Per-character times, spread evenly inside each word
+  const chars: { c: string; start: number; end: number }[] = [];
+  for (const w of words) {
+    const cs = [...w.text];
+    const step = (w.end - w.start) / Math.max(cs.length, 1);
+    cs.forEach((c, i) => chars.push({ c, start: w.start + i * step, end: w.start + (i + 1) * step }));
+  }
+
+  let ci = 0;
+  let prevEnd = lineStart;
+  return tokens.map((token) => {
+    let first = -1;
+    let last = -1;
+    for (const c of token.text) {
+      let k = ci;
+      while (k < chars.length && chars[k].c !== c && k - ci < 8) k++;
+      if (k < chars.length && chars[k].c === c) {
+        if (first < 0) first = k;
+        last = k;
+        ci = k + 1;
+      }
+    }
+    const start = first < 0 ? prevEnd : Math.max(chars[first].start, prevEnd);
+    const end = first < 0 ? prevEnd : Math.max(chars[last].end, start);
+    prevEnd = end;
+    return { ...token, start, end };
+  });
+}
+
 export async function tokenizeText(text: string): Promise<TranscriptToken[]> {
   const t = await getTokenizer();
   return t.tokenize(text).map(token => ({

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { callGeminiWithFallback } from "@/lib/gemini";
-import { assignTokenTimings, tokenizeText } from "@/lib/tokenize";
+import { assignWordTimings, tokenizeText, type TimedWord } from "@/lib/tokenize";
 import jaconv from 'jaconv';
 import { tokensToRomaji } from "@/lib/romaji";
 
@@ -21,7 +21,14 @@ export async function POST(req: Request) {
       index: Number(l.index),
       text: String(l.text).substring(0, MAX_LINE_LEN),
       start: Number(l.start),
-      duration: Number(l.duration)
+      duration: Number(l.duration),
+      words: Array.isArray(l.words)
+        ? l.words.slice(0, MAX_LINE_LEN).map((w: any): TimedWord => ({
+            text: String(w.text).substring(0, 20),
+            start: Number(w.start),
+            end: Number(w.end)
+          }))
+        : undefined
     }));
 
     // 1. Tokenize lines first (since they were skipped in the initial load)
@@ -40,7 +47,7 @@ export async function POST(req: Request) {
         return {
           index: line.index,
           text: line.text,
-          tokens: assignTokenTimings(line.start, line.duration, cleanTokens),
+          tokens: assignWordTimings(line.start, line.duration, cleanTokens, line.words),
           romaji: tokensToRomaji(cleanTokens)
         };
       })
