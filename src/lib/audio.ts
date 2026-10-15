@@ -8,11 +8,11 @@ import { pipeline } from 'node:stream/promises';
 import { Innertube } from 'youtubei.js';
 
 export const SAMPLE_RATE = 16000;
-const YTDLP_BIN = process.env.YTDLP_BIN || 'yt-dlp';
 
 function runYtDlp(videoId: string, dir: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const proc = spawn(YTDLP_BIN, [
+    // Literal command names: a variable here makes Turbopack trace the whole project
+    const proc = spawn('yt-dlp', [
       '-q', '--no-warnings', '--no-playlist', '-f', 'bestaudio/best',
       '-o', path.join(dir, 'ytdlp.%(ext)s'),
       `https://www.youtube.com/watch?v=${videoId}`,

@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { RawPiece } from './asr';
 
 // Built from tools/apple-asr/main.swift by `npm run build:asr` (also runs before dev/build)
-const APPLE_ASR_BIN = process.env.APPLE_ASR_BIN || path.join(process.cwd(), 'bin', 'apple-asr');
+const APPLE_ASR_BIN = path.join(/*turbopackIgnore: true*/ process.cwd(), 'bin', 'apple-asr');
 
 type AppleWord = { text: string; start: number; end: number };
 type AppleJson = { results: { words: AppleWord[] }[] };
@@ -15,7 +15,8 @@ export function appleAsrAvailable(): boolean {
 
 function runAppleAsr(wavFile: string): Promise<AppleJson> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(APPLE_ASR_BIN, [wavFile, 'ja-JP']);
+    // Relative to the working directory (= APPLE_ASR_BIN); a variable command makes Turbopack trace the whole project
+    const proc = spawn('./bin/apple-asr', [wavFile, 'ja-JP']);
     const out: Buffer[] = [];
     let stderr = '';
     proc.stdout.on('data', (c: Buffer) => out.push(c));

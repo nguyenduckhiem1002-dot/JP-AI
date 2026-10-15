@@ -5,11 +5,9 @@ import { cpus } from 'node:os';
 import path from 'node:path';
 import type { RawPiece } from './asr';
 
-const WHISPER_BIN = process.env.WHISPER_CLI || 'whisper-cli';
-const MODEL_PATH = process.env.WHISPER_MODEL || path.join(process.cwd(), 'models', 'ggml-large-v3-turbo-q5_0.bin');
+const MODEL_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), 'models', 'ggml-large-v3-turbo-q5_0.bin');
 // DTW alignment-heads preset matching the model; gives far better token times than the default heuristic
-// Set WHISPER_DTW=none for models with no preset (e.g. distilled Kotoba-Whisper)
-const DTW_PRESET = process.env.WHISPER_DTW || 'large.v3.turbo';
+const DTW_PRESET = 'large.v3.turbo';
 // Punctuated prompt nudges Whisper into emitting 。、 so lines can be split on sentences
 const PROMPT = 'こんにちは。今日は、よろしくお願いします。';
 
@@ -29,12 +27,12 @@ function runWhisper(wavFile: string, outBase: string): Promise<void> {
     '-mc', '0',
     // No --vad: whisper.cpp then reports token offsets on the silence-stripped timeline.
     // DTW needs flash attention off.
-    ...(DTW_PRESET === 'none' ? [] : ['-nfa', '--dtw', DTW_PRESET]),
+    '-nfa', '--dtw', DTW_PRESET,
     '-f', wavFile,
   ];
 
   return new Promise<void>((resolve, reject) => {
-    const proc = spawn(WHISPER_BIN, args);
+    const proc = spawn('whisper-cli', args);
     let stderr = '';
     proc.stderr.on('data', (c: Buffer) => { stderr = (stderr + c.toString()).slice(-2000); });
     proc.on('error', err => reject(

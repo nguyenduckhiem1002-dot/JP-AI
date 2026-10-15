@@ -7,8 +7,8 @@ type Line = { text: string; start: number; duration: number };
 
 const WINDOW = 512; // Silero v5 @16kHz
 const CONTEXT = 64;
-const MODEL_PATH = path.join(process.cwd(), 'models', 'silero_vad.onnx');
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'vad');
+const MODEL_PATH = path.join(/*turbopackIgnore: true*/ process.cwd(), 'models', 'silero_vad.onnx');
+const CACHE_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), '.cache', 'vad');
 
 // Hysteresis / duration params (seconds)
 const THRESHOLD = 0.5;

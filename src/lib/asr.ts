@@ -14,7 +14,7 @@ type Piece = RawPiece & { inSpeech: boolean };
 // 'apple' (default on macOS when bin/apple-asr exists) falls back to 'whisper' on failure
 const ENGINE = process.env.ASR_ENGINE === 'whisper' ? 'whisper' : 'apple';
 // v3: Apple SpeechAnalyzer, merged fragment lines (v2: Whisper only)
-const CACHE_DIR = path.join(process.cwd(), '.cache', 'asr-v3');
+const CACHE_DIR = path.join(/*turbopackIgnore: true*/ process.cwd(), '.cache', 'asr-v3');
 
 // Line splitting (seconds / characters)
 const MAX_GAP = 1.0;        // a pause this long ends a line…
