@@ -1,5 +1,22 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Nhận dạng giọng nói (chạy trên máy)
+
+Phụ đề và timing karaoke được tạo từ audio của video, không dùng phụ đề YouTube:
+
+1. Tải audio bằng `yt-dlp`.
+2. Nhận dạng tiếng Nhật bằng **Apple SpeechAnalyzer** (macOS 26+, Neural Engine). Nếu không có hoặc lỗi thì dùng **Whisper** (whisper.cpp). Đặt `ASR_ENGINE=whisper` để luôn dùng Whisper.
+3. Căn điểm bắt đầu của từng chữ theo **Silero VAD** (`models/silero_vad.onnx`) và bỏ các đoạn không có tiếng người.
+
+Cài đặt trên macOS:
+
+```bash
+brew install yt-dlp ffmpeg whisper-cpp
+curl -L -o models/ggml-large-v3-turbo-q5_0.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
+```
+
+`bin/apple-asr` được build tự động từ `tools/apple-asr/main.swift` khi chạy `npm run dev` / `npm run build` (cần Xcode Command Line Tools), hoặc chạy `npm run build:asr`. Lần đầu dùng, macOS sẽ tải gói nhận dạng tiếng Nhật. Kết quả được cache trong `.cache/asr-v3/`.
+
 ## Getting Started
 
 First, run the development server:

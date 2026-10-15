@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node tools/apple-asr/build.mjs",
     "dev": "next dev",
+    "prebuild": "node tools/apple-asr/build.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:asr": "node tools/apple-asr/build.mjs"
   },
   "dependencies": {
     "autoprefixer": "^10.5.4",

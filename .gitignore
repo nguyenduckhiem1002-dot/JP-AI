@@ -50,3 +50,6 @@ next-env.d.ts
 
 # whisper models (large binaries, download separately)
 /models/*.bin
+
+# Apple ASR helper, built from tools/apple-asr by npm run build:asr
+/bin/

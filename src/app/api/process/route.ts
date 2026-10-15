@@ -4,7 +4,7 @@ import { assignWordTimings, tokenizeText } from "@/lib/tokenize";
 import jaconv from 'jaconv';
 import { callGeminiWithFallback } from "@/lib/gemini";
 import { tokensToRomaji } from "@/lib/romaji";
-import { transcribeWithWhisper } from "@/lib/whisper";
+import { transcribeVideo } from "@/lib/asr";
 
 function kataToHira(kata: string) {
   if (!kata) return "";
@@ -27,18 +27,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ transcript: cached });
     }
 
-    // 1. Nhận dạng giọng nói bằng Whisper (local) — có timing từng từ, không dùng phụ đề YouTube
-    console.log("Transcribing with Whisper", videoId);
+    // 1. Nhận dạng giọng nói trên máy (Apple SpeechAnalyzer, dự phòng Whisper) — có timing từng chữ, không dùng phụ đề YouTube
+    console.log("Transcribing", videoId);
     let rawTranscript;
     try {
-      rawTranscript = await transcribeWithWhisper(videoId);
+      rawTranscript = await transcribeVideo(videoId);
     } catch (e: any) {
-      console.error("Whisper failed:", e);
-      return NextResponse.json({ error: `Whisper lỗi: ${e.message}` }, { status: 500 });
+      console.error("Speech recognition failed:", e);
+      return NextResponse.json({ error: `Nhận dạng giọng nói lỗi: ${e.message}` }, { status: 500 });
     }
 
     if (!rawTranscript || rawTranscript.length === 0) {
-      return NextResponse.json({ error: "Whisper không nhận dạng được lời thoại tiếng Nhật" }, { status: 400 });
+      return NextResponse.json({ error: "Không nhận dạng được lời thoại tiếng Nhật" }, { status: 400 });
     }
 
     // 2. CHỈ Tokenize 20 câu đầu tiên để load cực nhanh
